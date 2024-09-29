@@ -3,7 +3,7 @@
   vars:
     esxi_username: "root"
     esxi_password: "VMware1!"
- 
+
   tasks: 
     - name: Create Lab Standard Switch
       community.vmware.vmware_vswitch:
