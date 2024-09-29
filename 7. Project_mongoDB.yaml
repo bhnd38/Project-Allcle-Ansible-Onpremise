@@ -1,0 +1,80 @@
+# MongoDB 설치 및 Kubernetes 연동 설정
+- hosts: db
+  become: yes
+  tasks:
+    - name: Install MongoDB
+      dnf:
+        name: mongodb-server
+        state: present
+
+    - name: Start and enable MongoDB service
+      systemd:
+        name: mongod
+        state: started
+        enabled: yes
+
+    - name: Ensure MongoDB is running
+      command: mongo --eval 'db.runCommand({ ping: 1 })'
+
+# Kubernetes에서 MongoDB 배포
+- hosts: master1
+  become: yes
+  tasks:
+    - name: Create MongoDB Deployment YAML
+      copy:
+        dest: /home/k8s/mongodb-deployment.yaml
+        content: |
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: mongodb
+          spec:
+            replicas: 1
+            selector:
+              matchLabels:
+                app: mongodb
+            template:
+              metadata:
+                labels:
+                  app: mongodb
+              spec:
+                containers:
+                - name: mongodb
+                  image: mongo:latest
+                  ports:
+                  - containerPort: 27017
+                  env:
+                  - name: MONGO_INITDB_ROOT_USERNAME
+                    value: root
+                  - name: MONGO_INITDB_ROOT_PASSWORD
+                    value: VMware1!
+                  volumeMounts:
+                  - name: mongo-data
+                    mountPath: /data/db
+                volumes:
+                - name: mongo-data
+                  persistentVolumeClaim:
+                    claimName: nfs-pvc
+
+    - name: Create MongoDB Service YAML
+      copy:
+        dest: /home/k8s/mongodb-service.yaml
+        content: |
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: mongodb
+          spec:
+            selector:
+              app: mongodb
+            ports:
+            - protocol: TCP
+              port: 27017
+              targetPort: 27017
+            type: ClusterIP
+
+    - name: Apply MongoDB Deployment
+      command: kubectl apply -f /home/k8s/mongodb-deployment.yaml
+
+    - name: Apply MongoDB Service
+      command: kubectl apply -f /home/k8s/mongodb-service.yaml

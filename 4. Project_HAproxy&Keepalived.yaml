@@ -1,0 +1,46 @@
+---
+- hosts: haproxy
+  become: yes
+  tasks:
+    - name: Disable firewall
+      systemd:
+        name: firewalld
+        state: stopped
+        enabled: no
+        
+---
+- hosts: haproxy
+  become: yes
+  tasks:
+    - name: Install HAProxy and Keepalived
+      apt:
+        name:
+          - haproxy
+          - keepalived
+        state: present
+        update_cache: yes
+
+    - name: Configure HAProxy
+      template:
+        src: templates/haproxy.cfg.j2
+        dest: /etc/haproxy/haproxy.cfg
+      notify:
+        - Restart HAProxy
+
+    - name: Configure Keepalived
+      template:
+        src: templates/keepalived.conf.j2
+        dest: /etc/keepalived/keepalived.conf
+      notify:
+        - Restart Keepalived
+
+  handlers:
+    - name: Restart HAProxy
+      service:
+        name: haproxy
+        state: restarted
+
+    - name: Restart Keepalived
+      service:
+        name: keepalived
+        state: restarted

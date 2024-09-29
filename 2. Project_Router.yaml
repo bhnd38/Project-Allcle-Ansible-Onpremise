@@ -1,0 +1,109 @@
+---
+- hosts: localhost
+  vars:
+    vcenter_hostname: "vcsa.vclass.reca6"
+    vcenter_username: "S02@vclass.reca6"
+    vcenter_password: "VMware1!"
+    datacenter_name: "RECA6"
+    project_folder: "RECA6/vm/5.Projects/P02"
+    
+  tasks: 
+    - name: Deploy Project Router from Untangle Template
+      community.vmware.vmware_guest:
+        hostname: "{{ vcenter_hostname }}"
+        username: "{{ vcenter_username }}"
+        password: "{{ vcenter_password }}"
+        validate_certs: 'false'
+        datacenter: '{{datacenter_name}}'
+        
+        template: '{{ item.template }}'
+        folder: '{{ project_folder }}'
+        name: '{{ item.vmname }}'
+        esxi_hostname: "{{ item.host }}"
+        datastore: "{{ item.datastore }}"
+        networks:
+        - name: '{{ item.wan }}'
+          device_type: vmxnet3
+        - name: '{{ item.lan }}'
+          device_type: vmxnet3
+        state: poweredon
+      loop:
+        - { template: "Temp-untangle-02", vmname: "FP-Team2-Untangle", host: "esxi-02.vclass.reca6", datastore: "Local-02", wan: "VM-172.16.1.x", lan: "FP-Team2-K8s" }
+      
+      delegate_to: localhost
+      register: deploy_vm
+
+    - name: Router Network Connect
+      community.vmware.vmware_guest:
+        hostname: "{{ vcenter_hostname }}"
+        username: "{{ vcenter_username }}"
+        password: "{{ vcenter_password }}"
+        validate_certs: 'false'
+        datacenter: '{{datacenter_name}}'
+        
+        folder: '{{ project_folder }}'
+        name: '{{ item.vmname }}'
+        networks:
+        - name: '{{ item.wan }}'
+          device_type: vmxnet3
+          start_connected: true
+          connected: true
+        - name: '{{ item.lan }}'
+          device_type: vmxnet3
+          start_connected: true
+          connected: true
+      loop:
+        - { vmname: "FP-Team2-Untangle", wan: "VM-172.16.1.x", lan: "FP-Team2-K8s" }
+
+      delegate_to: localhost
+      register: deploy_vm
+
+    - name: Waiting 60 seconds for routers to start
+      wait_for:
+        timeout: 60
+      delegate_to: localhost
+
+    - name: Configure Untangle Router via API (placeholder for actual API calls)
+      uri:
+        url: "http://{{ item.vmname }}/api/config"
+        method: POST
+        user: 'admin'
+        password: 'VMware1!'
+        force_basic_auth: yes
+        status_code: 200
+        headers:
+          Content-Type: "application/json"
+        body_format: json
+        body: |
+          {
+            "config": {
+              "interface": {
+                "wan": {
+                  "description": "WAN",
+                  "address": "dhcp"
+                },
+                "lan": {
+                  "description": "LAN",
+                  "address": "{{ item.langateway }}"
+                }
+              },
+              "nat": {
+                "enabled": true,
+                "outbound_interface": "wan",
+                "source_network": "{{ item.lannetwork }}",
+                "translation": "masquerade"
+              },
+              "routes": {
+                "default": {
+                  "gateway": "172.16.1.1"
+                }
+              },
+              "dns": {
+                "nameserver": "172.16.1.2"
+              }
+            }
+          }
+      loop:
+        - { vmname: "P00-K8s-Router", langateway: "172.17.1.1/24", lannetwork: "172.17.1.0/24" }
+        
+      delegate_to: localhost

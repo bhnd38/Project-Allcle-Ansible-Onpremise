@@ -1,0 +1,39 @@
+global_defs {
+  notification_email {
+  }
+  router_id LVS_DEVEL
+  vrrp_skip_check_adv_addr
+  vrrp_garp_interval 0
+  vrrp_gna_interval 0
+}
+
+
+vrrp_script chk_haproxy {
+  script "killall -0 haproxy"
+  interval 2
+  weight 2
+}
+
+
+vrrp_instance haproxy-vip {
+  state MASTER        # Primary Load Balancer
+  priority 100        # Primary LB's priority. If Secodary, Set priority 99.
+  interface ens33                        # Network card
+            # Rocky using ens33
+  virtual_router_id 60
+  advert_int 1
+  authentication {
+    auth_type PASS
+    auth_pass 1111
+  }
+  unicast_src_ip 10.10.10.6            # The IP address of this machine
+  unicast_peer {
+    10.10.10.7                         # The IP address of peer machines
+  }
+  virtual_ipaddress {
+    10.10.10.10/24                     # The VIP address
+  }
+  track_script {
+    chk_haproxy
+  }
+}
