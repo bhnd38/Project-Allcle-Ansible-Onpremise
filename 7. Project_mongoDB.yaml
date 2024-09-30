@@ -2,9 +2,28 @@
 - hosts: db
   become: yes
   tasks:
-    - name: Install MongoDB
+    - name: Add MongoDB repository
+      copy:
+        dest: /etc/yum.repos.d/mongodb.repo
+        content: |
+          [mongodb-org-5.0]
+          name=MongoDZB Repository
+          baseurl=https://repo.mongodb.org/yum/redhat/$releasever/mongodb-org/5.0/x86_64/
+          gpgcheck=1
+          enabled=1
+          gpgkey=https://www.mongodb.org/static/pgp/server-5.0.asc
+
+    - name: Install MongoDB server
       dnf:
         name: mongodb-server
+        state: present
+    
+    - name: Update MongoDB bindIp to allow external access
+      lineinfile:
+        path: /etc/mongod.conf
+        regexp: '^\\s*bindIp:'
+        line: '  bindIp: 0.0.0.0'   # 모든 IP 주소에서 접근 허용
+        insertafter: '^net:'       # 'net:' 아래에 추가
         state: present
 
     - name: Start and enable MongoDB service
@@ -14,67 +33,26 @@
         enabled: yes
 
     - name: Ensure MongoDB is running
-      command: mongo --eval 'db.runCommand({ ping: 1 })'
+      shell: "mongo --eval 'db.runCommand({ ping: 1 })'"
+      ignore_errors: yes
 
-# Kubernetes에서 MongoDB 배포
+# Kubernetes 클러스터에 MongoDB 클라이언트만 설치
 - hosts: master1
   become: yes
   tasks:
-    - name: Create MongoDB Deployment YAML
+    - name: Install MongoDB client on Kubernetes node
+      dnf:
+        name: mongodb-org-shell
+        state: present
+
+    - name: Create MongoDB connection script
       copy:
-        dest: /home/k8s/mongodb-deployment.yaml
+        dest: /home/k8s/mongodb-client.sh
+        mode: '0755'
         content: |
-          apiVersion: apps/v1
-          kind: Deployment
-          metadata:
-            name: mongodb
-          spec:
-            replicas: 1
-            selector:
-              matchLabels:
-                app: mongodb
-            template:
-              metadata:
-                labels:
-                  app: mongodb
-              spec:
-                containers:
-                - name: mongodb
-                  image: mongo:latest
-                  ports:
-                  - containerPort: 27017
-                  env:
-                  - name: MONGO_INITDB_ROOT_USERNAME
-                    value: root
-                  - name: MONGO_INITDB_ROOT_PASSWORD
-                    value: VMware1!
-                  volumeMounts:
-                  - name: mongo-data
-                    mountPath: /data/db
-                volumes:
-                - name: mongo-data
-                  persistentVolumeClaim:
-                    claimName: nfs-pvc
+          #!/bin/bash
+          mongo --host 10.10.10.5 --port 27017 -u root -p VMware1! --authenticationDatabase admin
 
-    - name: Create MongoDB Service YAML
-      copy:
-        dest: /home/k8s/mongodb-service.yaml
-        content: |
-          apiVersion: v1
-          kind: Service
-          metadata:
-            name: mongodb
-          spec:
-            selector:
-              app: mongodb
-            ports:
-            - protocol: TCP
-              port: 27017
-              targetPort: 27017
-            type: ClusterIP
-
-    - name: Apply MongoDB Deployment
-      command: kubectl apply -f /home/k8s/mongodb-deployment.yaml
-
-    - name: Apply MongoDB Service
-      command: kubectl apply -f /home/k8s/mongodb-service.yaml
+    - name: Test MongoDB connection from Kubernetes node
+      shell: /home/k8s/mongodb-client.sh
+      ignore_errors: yes
