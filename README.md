@@ -1,4 +1,5 @@
 ﻿## 레포지토리 설명 (Repository Description)
+- Description : 
     - "학사 관리 시스템 프로젝트 'Allcle'의 Onpremise 인프라를 생성하는 Ansible 플레이북 레포지토리입니다."
     - "vSphere와 vCenter, ESXI Host를 사용한 가상화 환경에서 구축하였습니다."
 
